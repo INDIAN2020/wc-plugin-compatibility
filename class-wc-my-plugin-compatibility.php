@@ -86,6 +86,86 @@ class WC_My_Plugin_Compatibility {
 
 
 	/**
+	* Get all order statuses
+	*
+	* Introduced in WC 2.2
+	*
+	* @since 2.0.0
+	* @return array
+	*/
+	public static function wc_get_order_statuses() {
+
+		if ( self::is_wc_version_gte_2_2() ) {
+
+			return wc_get_order_statuses();
+
+		} else {
+
+			// get available order statuses
+			$order_status_terms = get_terms( 'shop_order_status', array( 'hide_empty' => false ) );
+
+			if ( is_wp_error( $order_status_terms ) ) {
+
+				$order_status_terms = array();
+			}
+
+			$order_statuses = array();
+
+			foreach ( $order_status_terms as $term ) {
+
+				$order_statuses[ $term->slug ] = $term->name;
+			}
+
+			return $order_statuses;
+		}
+	}
+
+
+	/**
+	 * Get the order status
+	 *
+	 * Order statuses changed from a taxonomy in 2.1 to using `post_status`
+	 * in 2.2
+	 *
+	 * @since 2.0.0
+	 * @param WC_Order $order
+	 * @return mixed|string
+	 */
+	public static function get_order_status( WC_Order $order ) {
+
+		return self::is_wc_version_gte_2_2() ? $order->get_status() : $order->status;
+	}
+
+
+	/**
+	 * Check if the order has the given status
+	 *
+	 * @param WC_Order $order
+	 * @param string|array $status single status or array of statuses to check
+	 * @since 2.0.0
+	 * @return bool
+	 */
+	public static function order_has_status( $order, $status ) {
+
+		if ( self::is_wc_version_gte_2_2() ) {
+
+			return $order->has_status( $status );
+
+		} else {
+
+			if ( is_array( $status ) ) {
+
+				return in_array( $order->status, $status );
+
+			} else {
+
+				return $status === $order->status;
+			}
+		}
+	}
+
+
+	/**
 	 * Transparently backport the `post_status` WP Query arg used by WC 2.2
 	 * for order statuses to the `shop_order_status` taxonomy query arg used by
 	 * WC 2.1
@@ -111,13 +191,15 @@ class WC_My_Plugin_Compatibility {
 				$args['post_status'] = 'publish';
 
 				$tax_query = array(
-					'taxonomy' => 'shop_order_status',
-					'field'    => 'slug',
-					'terms'    => $order_statuses,
-					'operator' => 'IN',
+					array(
+						'taxonomy' => 'shop_order_status',
+						'field'    => 'slug',
+						'terms'    => $order_statuses,
+						'operator' => 'IN',
+					)
 				);
 
-				$args['tax_query'] = array_merge( isset( $args['tax_query'] ) ? $args['tax_query'] : array(), $tax_query );
+				$args['tax_query'] = array_merge( ( isset( $args['tax_query'] ) ? $args['tax_query'] : array() ), $tax_query );
 			}
 		}
 
@@ -209,7 +291,7 @@ class WC_My_Plugin_Compatibility {
 	 *
 	 * Backports the get_formatted() method to WC 2.1
 	 *
-	 * @since 2.0.0
+	 * @since 2.2.0
 	 * @see WC_Order_Item_Meta::get_formatted()
 	 * @param \WC_Order_Item_Meta $item_meta order item meta class instance
 	 * @param string $hide_prefix exclude meta when key is prefixed with this, defaults to `_`
@@ -294,9 +376,30 @@ class WC_My_Plugin_Compatibility {
 
 
 	/**
+	 * Gets a product meta field value, regardless of product type
+	 *
+	 * @since 2.0
+	 * @param WC_Product $product the product
+	 * @param string $field_name the field name
+	 * @return mixed meta value
+	 */
+	public static function get_product_meta( $product, $field_name ) {
+
+		// Should be able to drop this when we drop support for WC 2.1
+		// even in WC >= 2.0 product variations still use the product_custom_fields array apparently
+		if ( $product->variation_id && isset( $product->product_custom_fields[ '_' . $field_name ][0] ) && '' !== $product->product_custom_fields[ '_' . $field_name ][0] ) {
+			return $product->product_custom_fields[ '_' . $field_name ][0];
+		}
+
+		// use magic __get
+		return $product->$field_name;
+	}
+
+
+	/**
 	 * Helper method to get the version of the currently installed WooCommerce
 	 *
-	 * @since 1.0.0
+	 * @since 2.0.0
 	 * @return string woocommerce version number or null
 	 */
 	private static function get_wc_version() {
@@ -308,7 +411,7 @@ class WC_My_Plugin_Compatibility {
 	/**
 	 * Returns true if the installed version of WooCommerce is 2.2 or greater
 	 *
-	 * @since 2.0.0
+	 * @since 2.2.0
 	 * @return boolean true if the installed version of WooCommerce is 2.2 or greater
 	 */
 	public static function is_wc_version_gte_2_2() {
@@ -317,9 +420,20 @@ class WC_My_Plugin_Compatibility {
 
 
 	/**
+	 * Returns true if the installed version of WooCommerce is less than 2.2
+	 *
+	 * @since 2.2.0
+	 * @return boolean true if the installed version of WooCommerce is less than 2.2
+	 */
+	public static function is_wc_version_lt_2_2() {
+		return self::get_wc_version() && version_compare( self::get_wc_version(), '2.2', '<' );
+	}
+
+
+	/**
 	 * Returns true if the installed version of WooCommerce is greater than $version
 	 *
-	 * @since 1.0.0
+	 * @since 2.0.0
 	 * @param string $version the version to compare
 	 * @return boolean true if the installed version of WooCommerce is > $version
 	 */
